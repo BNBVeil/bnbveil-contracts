@@ -2,6 +2,24 @@
 
 Solidity sources for the BNB Veil launchpad, native-asset privacy pool, and transaction adapters.
 
+## Developer first buy
+
+The developer's first buy is capped at **5% of the total token supply**. Locking is **optional**:
+
+- `createToken` sends the developer's purchased tokens to `DevLock`, where they vest linearly over **30 days from token creation**.
+- `createTokenUnlocked` sends the purchased tokens directly to `devBeneficiary`, without a lock. In this case, `TokenCreated.devLock` is `address(0)`, so anyone can see on-chain that the developer's first-buy allocation is not locked.
+
+Both creation methods enforce the same 5% first-buy cap.
+
+## Contract source references
+
+| Contract | BscScan | Optimizer runs | EVM target |
+| --- | --- | ---: | --- |
+| VeilPortalV2 | [Verified source](https://bscscan.com/address/0xa1ee0882c4386a203922861ABD5431cf563C38Ea#code) | 200 | Cancun |
+| VeilPoolAdapter | [Verified source](https://bscscan.com/address/0x103eF5E44fdA3688DE112F1a5298F2f2e8D9CeEb#code) | 10,000 | Prague |
+
+Both linked verification records use Solidity `0.8.28`. The repository's default build configuration is described below; reproducing a specific deployment requires that deployment's complete compiler input, including its own settings, source paths, linked libraries, and constructor arguments.
+
 ## Build
 
 Use Foundry with Solidity **0.8.28**. The build configuration was checked with Forge **1.7.1**.
