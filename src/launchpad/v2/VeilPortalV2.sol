@@ -127,7 +127,8 @@ contract VeilPortalV2 is Ownable2Step, ReentrancyGuard {
         return Clones.predictDeterministicAddress(tokenImplementation, _salt(creator, salt), address(this));
     }
 
-    /// @notice 创建代币；msg.value 为开发者首笔买入（可为 0），买到的代币必须 ≤ 5% 总量，否则整笔回滚
+    /// @notice 创建代币；msg.value 为开发者首笔买入（可为 0），买到的代币必须 ≤ 5% 总量，否则整笔回滚。
+    ///         买到的代币进锁仓合约，30 天内线性释放。
     /// @param devBeneficiary 开发者锁仓受益地址（建议使用隐身地址）
     /// @param metadataURI 代币元数据。最长 1024 字节，超出回滚
     function createToken(
@@ -137,12 +138,35 @@ contract VeilPortalV2 is Ownable2Step, ReentrancyGuard {
         address devBeneficiary,
         string calldata metadataURI
     ) external payable nonReentrant returns (address token) {
+        token = _create(name, symbol, salt, devBeneficiary, metadataURI, true);
+    }
+
+    /// @notice 同 createToken，但开发者买到的代币直接发给 devBeneficiary，不锁仓。
+    ///         事件里 devLock 为零地址，买家可以据此看出开发者持仓没有锁。5% 上限不变。
+    function createTokenUnlocked(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address devBeneficiary,
+        string calldata metadataURI
+    ) external payable nonReentrant returns (address token) {
+        token = _create(name, symbol, salt, devBeneficiary, metadataURI, false);
+    }
+
+    function _create(
+        string calldata name,
+        string calldata symbol,
+        bytes32 salt,
+        address devBeneficiary,
+        string calldata metadataURI,
+        bool lockDev
+    ) internal returns (address token) {
         if (devBeneficiary == address(0)) revert ZeroAddress();
         if (bytes(metadataURI).length > MAX_METADATA_URI_BYTES) revert MetadataTooLong(bytes(metadataURI).length);
         // salt 绑定调用者，防止别人抢注同一个靓号地址
         token = Clones.cloneDeterministic(tokenImplementation, _salt(msg.sender, salt));
         VeilTokenV2(token).initialize(name, symbol, TOTAL_SUPPLY, address(this));
-        _openMarket(token, name, symbol, devBeneficiary, metadataURI);
+        _openMarket(token, name, symbol, devBeneficiary, metadataURI, lockDev);
     }
 
     /// @dev 和 createToken 拆开，避免再带上 salt 时栈太深
@@ -151,30 +175,30 @@ contract VeilPortalV2 is Ownable2Step, ReentrancyGuard {
         string calldata name,
         string calldata symbol,
         address devBeneficiary,
-        string calldata metadataURI
+        string calldata metadataURI,
+        bool lockDev
     ) internal {
         Market storage m = markets[token];
         m.x = VIRTUAL_BNB;
         m.y = VIRTUAL_TOKEN;
         m.pool = _initPool(token);
         VeilTokenV2(token).setDexPool(m.pool);
-        _lockAndEmit(token, m.pool, _takeDevBuy(m, msg.value), name, symbol, devBeneficiary, metadataURI);
+        uint256 devTokens = _takeDevBuy(m, msg.value);
+        address lock = lockDev ? _lockDev(token, devTokens, devBeneficiary) : _payDev(token, devTokens, devBeneficiary);
+        emit TokenCreated(token, lock, m.pool, devTokens, name, symbol, metadataURI);
     }
 
-    function _lockAndEmit(
-        address token,
-        address pool,
-        uint256 devTokens,
-        string calldata name,
-        string calldata symbol,
-        address devBeneficiary,
-        string calldata metadataURI
-    ) internal {
-        address lock = Clones.clone(devLockImplementation);
+    function _lockDev(address token, uint256 devTokens, address devBeneficiary) internal returns (address lock) {
+        lock = Clones.clone(devLockImplementation);
         markets[token].devLock = lock;
         if (devTokens > 0) IERC20(token).safeTransfer(lock, devTokens);
         DevLock(lock).initialize(IERC20(token), devBeneficiary, devTokens, DEV_LOCK_DURATION);
-        emit TokenCreated(token, lock, pool, devTokens, name, symbol, metadataURI);
+    }
+
+    /// @dev 不锁仓：devLock 留空，代币直接给受益地址。
+    function _payDev(address token, uint256 devTokens, address devBeneficiary) internal returns (address) {
+        if (devTokens > 0) IERC20(token).safeTransfer(devBeneficiary, devTokens);
+        return address(0);
     }
 
     function _takeDevBuy(Market storage m, uint256 value) internal returns (uint256 devTokens) {
