@@ -1,0 +1,9 @@
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@oz/=lib/openzeppelin-contracts/contracts/
+@oz-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+lean-imt/=lib/zk-kit-solidity/packages/lean-imt/contracts/
+poseidon/=lib/poseidon-solidity/contracts/
+poseidon-solidity/=lib/poseidon-solidity/contracts/
+contracts/=src/privacy-pool/contracts/
+interfaces/=src/privacy-pool/interfaces/
